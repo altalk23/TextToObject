@@ -1,0 +1,80 @@
+{
+	"build_systems":
+	[
+		
+		{
+			"config": "Default",
+			"env":
+			{
+			},
+			"generator": "Ninja",
+			"name": "Default",
+			"target": "cmake_build",
+			"variants":
+			[
+				{
+					"build_target": "CodegenProject",
+					"name": "CodegenProject",
+				},
+				{
+					"build_target": "CodegenRun",
+					"name": "CodegenRun",
+				},
+				{
+					"build_target": "GeodeCodegenSources",
+					"name": "GeodeCodegenSources",
+				},
+				{
+					"build_target": "GeodeFilesystemImpl",
+					"name": "GeodeFilesystemImpl",
+				},
+				{
+					"build_target": "TextObject",
+					"name": "TextObject",
+				},
+				{
+					"build_target": "TextObject_PACKAGE",
+					"name": "TextObject_PACKAGE",
+				},
+				{
+					"build_target": "fmt",
+					"name": "fmt",
+				},
+				{
+					"build_target": "mat-json",
+					"name": "mat-json",
+				},
+				{
+					/*"build_target": "cstool",*/
+					"name": "ctest",
+					"target": "ctest_run",
+				},
+			],
+			"working_dir": "${project_path}/build",
+		},
+	],
+	"folders":
+	[
+		{
+			"path": ".",
+		},
+	],
+	"settings":
+	{
+		"ClangFormat": {
+			"format_on_save": true,
+		},
+		"cmake":
+		{
+			"generator": "Ninja",
+			"build_folder": "${project_path}/build",
+			"command_line_overrides":
+            {
+                "CMAKE_C_COMPILER": "/usr/local/opt/llvm/bin/clang",
+	            "CMAKE_CXX_COMPILER": "/usr/local/opt/llvm/bin/clang++",
+	            "CMAKE_C_COMPILER_LAUNCHER": "/usr/local/bin/ccache",
+	            "CMAKE_CXX_COMPILER_LAUNCHER": "/usr/local/bin/ccache",
+            },
+		},
+	},
+}
