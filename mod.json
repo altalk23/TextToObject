@@ -1,8 +1,8 @@
 {
 	"geode": "1.0.0-beta.17",
 	"version": "v1.0.0",
-	"id": "alk.text_object",
-	"name": "Text Object",
+	"id": "alk.text_to_object",
+	"name": "Text to Object",
 	"developer": "alk",
 	"description": "A mod to create custom text objects given a font and text"
 }
