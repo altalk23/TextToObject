@@ -13,7 +13,7 @@ file(GLOB SOURCES
 add_library(${PROJECT_NAME} SHARED ${SOURCES})
 
 find_package(PkgConfig REQUIRED)
-pkg_search_module(FFTW REQUIRED fftw3f IMPORTED_TARGET)
+pkg_search_module(FFTW REQUIRED fftw3 IMPORTED_TARGET)
 
 CPMAddPackage("gh:SFML/SFML#2.5.1")
 CPMAddPackage("gh:oneapi-src/oneTBB@2021.9.0")
@@ -35,6 +35,6 @@ else()
     message(STATUS "Found Geode: $ENV{GEODE_SDK}")
 endif()
 
-add_subdirectory($ENV{GEODE_SDK} $ENV{GEODE_SDK}/build)
+add_subdirectory($ENV{GEODE_SDK} ${CMAKE_BINARY_DIR}/geode)
 
 setup_geode_mod(${PROJECT_NAME})

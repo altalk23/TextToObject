@@ -12,17 +12,19 @@ namespace tulip::text {
 	struct GeneratorConfig {
 		mutable std::mutex mutex;
 
-		std::array<float, 2> position;
-		std::array<float, 2> anchor;
+		double positionX;
+		double positionY;
+		double anchorX;
+		double anchorY;
 
 		std::vector<ObjectKernel> kernels;
 
 		ghc::filesystem::path fontPath;
-		float fontSize = 36.0f;
+		double fontSize = 36.0f;
 
 		int32_t objectsPerGlyph = 50;
-		float minScore = 10.0f;
+		double minScore = 10.0f;
 		
-		float negativeScore = -1.0f;
+		double negativeScore = -1.0f;
 	};
 }

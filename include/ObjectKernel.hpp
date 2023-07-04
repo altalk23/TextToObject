@@ -2,12 +2,14 @@
 
 namespace tulip::text {
 	struct ObjectKernel {
-		std::vector<float> data;
+		std::vector<double> data;
 		int32_t width;
 		int32_t height;
+		double offsetX;
+		double offsetY;
 
 		int32_t objectId;
-		float scale;
-		float rotation;
+		double scale;
+		double rotation;
 	};
 }
