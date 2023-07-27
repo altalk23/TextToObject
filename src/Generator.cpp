@@ -11,6 +11,8 @@
 #include <locale>
 #include <codecvt> 
 
+#include <MatrixOperations.hpp>
+
 using namespace geode::prelude;
 using namespace tulip::text;
 
@@ -22,28 +24,16 @@ namespace tulip::text {
 
 	struct GlyphVector2D {
 		std::vector<double> data;
-		int32_t width;
-		int32_t height;
+		size_t width;
+		size_t height;
 		char32_t codepoint;
 	};
 
 	struct ConvolutionScore {
 		double score = 0.0f;
-		int32_t x = 0;
-		int32_t y = 0;
-		int32_t kernelId = 0;
-	};
-
-	struct FFTWData {
-		double* input;
-		double* kernelInput;
-		fftw_complex* output;
-		fftw_complex* kernelOutput;
-		fftw_complex* multiplied;
-		double* convolutionOutput;
-		fftw_plan inputPlan;
-		fftw_plan kernelPlan;
-		fftw_plan convolutionPlan;
+		size_t x = 0;
+		size_t y = 0;
+		size_t kernelId = 0;
 	};
 }
 
@@ -67,7 +57,7 @@ public:
 	);
 
 	ConvolutionScore getConvolutionScore(
-		GlyphVector2D const& glyphVector, ObjectKernel const& kernel, GeneratorConfig const& config, FFTWData& data
+		GlyphVector2D const& glyphVector, ObjectKernel const& kernel, GeneratorConfig const& config
 	) const;
 
 	std::vector<CreatedObject> create(std::u32string const& text, GeneratorConfig const& config);
@@ -108,8 +98,8 @@ std::map<char32_t, GlyphVector2D> Generator::Impl::getGlyphVectors(
 		glyphImage.create(vec.width, vec.height);
 		glyphImage.copy(fontImage, 0, 0, glyph.textureRect);
 
-		for (int32_t y = 0; y < vec.height; ++y) {
-			for (int32_t x = 0; x < vec.width; ++x) {
+		for (size_t y = 0; y < vec.height; ++y) {
+			for (size_t x = 0; x < vec.width; ++x) {
 				auto color = glyphImage.getPixel(x, y);
 				vec.data.push_back(color.a / 255.0f);
 			}
@@ -126,7 +116,7 @@ void Generator::Impl::addNegativeScores(
 ) {
 	for (auto& [codepoint, glyph] : glyphVectors) {
 		for (auto& val : glyph.data) {
-			if (val == 0.0f) {
+			if (val < 0.8f) {
 				val = config.negativeScore;
 			}
 		}
@@ -134,83 +124,71 @@ void Generator::Impl::addNegativeScores(
 }
 
 ConvolutionScore Generator::Impl::getConvolutionScore(
-	GlyphVector2D const& glyphVector, ObjectKernel const& kernel, GeneratorConfig const& config, FFTWData& data
+	GlyphVector2D const& glyphVector, ObjectKernel const& kernel, GeneratorConfig const& config, ConvolutionData& data
 ) const {
 	ConvolutionScore ret;
 	ret.score = 0.0f;
 
-	auto width = std::max(glyphVector.width, kernel.width);
-	auto height = std::max(glyphVector.height, kernel.height);
+	auto width = glyphVector.width + kernel.width - 1;
+	auto height = glyphVector.height + kernel.height - 1;
 
-	auto input = data.input;
+	auto imageInput = data.imageInput;
 	auto kernelInput = data.kernelInput;
-	auto output = data.output;
+	auto imageOutput = data.imageOutput;
 	auto kernelOutput = data.kernelOutput;
-	auto multiplied = data.multiplied;
 	auto convolutionOutput = data.convolutionOutput;
-	auto inputPlan = data.inputPlan;
+	auto imagePlan = data.imagePlan;
 	auto kernelPlan = data.kernelPlan;
 	auto convolutionPlan = data.convolutionPlan;
 
-	// create fftw input
-	for (int32_t i = 0; i < width * height; ++i) {
-		input[i] = 0.0;
-	}
 
-	for (int32_t y = 0; y < glyphVector.height; ++y) {
-		for (int32_t x = 0; x < glyphVector.width; ++x) {
+	for (size_t y = 0; y < glyphVector.height; ++y) {
+		for (size_t x = 0; x < glyphVector.width; ++x) {
 			auto index = y * glyphVector.width + x;
 			auto index2 = y * width + x;
-			input[index2] = glyphVector.data[index];
+			imageInput[index2] = glyphVector.data[index];
 		}
 	}
 
-	// create fftw kernel input
-	for (int32_t i = 0; i < width * height; ++i) {
-		kernelInput[i] = 0.0;
-	}
-
-	for (int32_t y = 0; y < kernel.height; ++y) {
-		for (int32_t x = 0; x < kernel.width; ++x) {
+	for (size_t y = 0; y < kernel.height; ++y) {
+		for (size_t x = 0; x < kernel.width; ++x) {
 			auto index = y * kernel.width + x;
 			auto index2 = y * width + x;
 			kernelInput[index2] = kernel.data[index];
 		}
 	}
 
-	// execute fftw plans
-	fftw_execute(inputPlan);
-	fftw_execute(kernelPlan);
-
-	// calculate convolution
-	for (int32_t y = 0; y < height; ++y) {
-		for (int32_t x = 0; x < width; ++x) {
-			auto index = y * width + x;
-			auto real = output[index][0];
-			auto imag = output[index][1];
-
-			auto kernelReal = kernelOutput[index][0];
-			auto kernelImag = kernelOutput[index][1];
-
-			multiplied[index][0] = real * kernelReal - imag * kernelImag;
-			multiplied[index][1] = real * kernelImag + imag * kernelReal;
-		}
-	}
-
-	fftw_execute(convolutionPlan);
+	
 
 	// find best score
-	for (int32_t y = kernel.height - 1; y < height; ++y) {
-		for (int32_t x = kernel.width - 1; x < width; ++x) {
+	for (size_t y = 0; y < height; ++y) {
+		for (size_t x = 0; x < width; ++x) {
 			auto index = y * width + x;
 
 			auto score = convolutionOutput[index];
 
-			if (score > ret.score + 1) {
+			if (score > ret.score + 0.1) {
 				ret.score = score;
 				ret.x = x - kernel.width + 1;
 				ret.y = y - kernel.height + 1;
 			}
+		}
+	}
+
+	// revert the inputs
+	for (size_t y = 0; y < glyphVector.height; ++y) {
+		for (size_t x = 0; x < glyphVector.width; ++x) {
+			auto index = y * glyphVector.width + x;
+			auto index2 = y * width + x;
+			imageInput[index2] = config.negativeScore;
+		}
+	}
+
+	for (size_t y = 0; y < kernel.height; ++y) {
+		for (size_t x = 0; x < kernel.width; ++x) {
+			auto index = y * kernel.width + x;
+			auto index2 = y * width + x;
+			kernelInput[index2] = 0.0;
 		}
 	}
 
@@ -225,52 +203,51 @@ std::vector<ConvolutionScore> Generator::Impl::getScoresForGlyph(
 	log::debug("Calculating scores for glyph");
 
 	// create kernel ids
-	std::vector<int32_t> kernelIds(config.kernels.size());
+	std::vector<size_t> kernelIds(config.kernels.size());
 	std::iota(kernelIds.begin(), kernelIds.end(), 0);
 
-	// for (int32_t y = 0; y < glyphVector.height; ++y) {
-	// 	for (int32_t x = 0; x < glyphVector.width; ++x) {
-	// 		auto index = y * glyphVector.width + x;
-	// 		std::cout << (glyphVector.data[index] > 0.9 ? '#' : ' ') << ' ';
-	// 	}
-	// 	std::cout << '\n';
-	// }
+	for (size_t y = 0; y < glyphVector.height; ++y) {
+		for (size_t x = 0; x < glyphVector.width; ++x) {
+			auto index = y * glyphVector.width + x;
+			std::cout << (glyphVector.data[index] > 0.0 ? '#' : ' ') << ' ';
+		}
+		std::cout << '\n';
+	}
 
 	log::debug("Calculating scores for glyph: {} kernels", kernelIds.size());
 
-	std::vector<FFTWData> fftwData(config.kernels.size());
+	ConvolutionData data;
+	size_t maxKernelWidth = 0, maxKernelHeight = 0;
 	for (int i = 0; i < config.kernels.size(); ++i) {
 		auto& kernel = config.kernels[i];
-		auto width = glyphVector.width;
-		auto height = glyphVector.height;
-		
-		auto& data = fftwData[i];
-		data.input = new (std::align_val_t(16)) double[width * height];
-		data.kernelInput = new (std::align_val_t(16)) double[width * height];
-		data.output = new (std::align_val_t(16)) fftw_complex[width * height];
-		data.kernelOutput = new (std::align_val_t(16)) fftw_complex[width * height];
-		data.multiplied = new (std::align_val_t(16)) fftw_complex[width * height];
-		data.convolutionOutput = new (std::align_val_t(16)) double[width * height];
-		data.inputPlan = fftw_plan_dft_r2c_2d(width, height, data.input, data.output,  FFTW_PATIENT);
-		data.kernelPlan = fftw_plan_dft_r2c_2d(width, height, data.kernelInput, data.kernelOutput,  FFTW_PATIENT);
-		data.convolutionPlan = fftw_plan_dft_c2r_2d(width, height, data.multiplied, data.convolutionOutput,  FFTW_PATIENT);
+		maxKernelWidth = std::max(maxKernelWidth, kernel.width);
+		maxKernelHeight = std::max(maxKernelHeight, kernel.height);
 	}
+	auto width = glyphVector.width + maxKernelWidth - 1;
+	auto height = glyphVector.height + maxKernelHeight - 1;
 
+	for (size_t y = 0; y < height; ++y) {
+		for (size_t x = 0; x < width; ++x) {
+			auto index = y * width + x;
+			data.imageInput[index] = config.negativeScore;
+			data.kernelInput[index] = 0.0;
+		}
+	}
 	// repeat for every object added to glyph
-	for (int32_t objectIndex = 0; objectIndex < config.objectsPerGlyph; ++objectIndex) {
+	for (size_t objectIndex = 0; objectIndex < config.objectsPerGlyph; ++objectIndex) {
 		std::mutex mutex;
 		ConvolutionScore bestScore;
 
 		log::debug("Calculating scores for glyph: object {}", objectIndex);
 
 		struct Body {
-			using argument_type = int32_t;
+			using argument_type = size_t;
 			Generator::Impl const* impl;
 			GlyphVector2D const& glyphVector;
 			GeneratorConfig const& config;
 			std::mutex& mutex;
 			ConvolutionScore& bestScore;
-			std::vector<FFTWData>& fftwData;
+			ConvolutionData& fftwData;
 
 			Body(
 				Generator::Impl const* impl,
@@ -278,7 +255,7 @@ std::vector<ConvolutionScore> Generator::Impl::getScoresForGlyph(
 				GeneratorConfig const& config,
 				std::mutex& mutex,
 				ConvolutionScore& bestScore,
-				std::vector<FFTWData>& fftwData
+				ConvolutionData& fftwData
 			) :
 				impl(impl),
 				glyphVector(glyphVector),
@@ -288,11 +265,11 @@ std::vector<ConvolutionScore> Generator::Impl::getScoresForGlyph(
 				fftwData(fftwData)
 			{}
 
-			void operator()(int32_t id, oneapi::tbb::feeder<int32_t>& feeder) const {
+			void operator()(size_t id/*, oneapi::tbb::feeder<size_t>& feeder*/) const {
 				// calculate convolution score
 				std::unique_lock<std::mutex> lock(mutex);
 				auto& kernel = config.kernels[id];
-				auto& data = fftwData[id];
+				auto& data = fftwData;
 				lock.unlock();
 
 				if (kernel.width > glyphVector.width || kernel.height > glyphVector.height) {
@@ -319,10 +296,13 @@ std::vector<ConvolutionScore> Generator::Impl::getScoresForGlyph(
 			config,
 			mutex,
 			bestScore,
-			fftwData
+			data
 		);
 		// for each convolution id
-		oneapi::tbb::parallel_for_each(kernelIds.begin(), kernelIds.end(), body);
+		// oneapi::tbb::parallel_for_each(kernelIds.begin(), kernelIds.end(), body);
+		for (auto id : kernelIds) {
+			body(id);
+		}
 
 		// break;
 
@@ -335,36 +315,65 @@ std::vector<ConvolutionScore> Generator::Impl::getScoresForGlyph(
 		// apply the best convolution
 		auto& kernel = config.kernels[bestScore.kernelId];
 		
-		for (int32_t y = 0; y < kernel.height; ++y) {
-			for (int32_t x = 0; x < kernel.width; ++x) {
+		for (size_t y = 0; y < kernel.height; ++y) {
+			for (size_t x = 0; x < kernel.width; ++x) {
 				auto index = y * kernel.width + x;
 				auto index2 = (y + bestScore.y) * glyphVector.width + (x + bestScore.x);
 
 				// if kernel is positive and glyph is positive, subtract kernel from glyph
 				if (kernel.data[index] > 0.0f && glyphVector.data[index2] > 0.0f) {
 					// square the kernel because handling transparency is hard
-					glyphVector.data[index2] -= kernel.data[index] * kernel.data[index];
-					if (glyphVector.data[index2] < 0.0f) {
-						glyphVector.data[index2] = 0.0f;
-					}
+					// glyphVector.data[index2] -= kernel.data[index] * kernel.data[index];
+					// if (glyphVector.data[index2] <= 0.0f) {
+					// 	glyphVector.data[index2] = -1.0f;
+					// }
+					glyphVector.data[index2] = 0;
 				}
 			}
 		}
 
-		// for (int32_t y = 0; y < glyphVector.height; ++y) {
-		// 	for (int32_t x = 0; x < glyphVector.width; ++x) {
-		// 		auto index = y * glyphVector.width + x;
-		// 		auto convolutionOutput = fftwData[0].convolutionOutput;;
-		// 		std::cout << convolutionOutput[index] << '\t';
+		auto width = (glyphVector.width + kernel.width - 1);
+		auto height = (glyphVector.height + kernel.height - 1);
+
+		// for (size_t y = 0; y < height; ++y) {
+		// 	for (size_t x = 0; x < width; ++x) {
+		// 		auto index = y * width + x;
+		// 		auto input = fftwData[bestScore.kernelId].input;;
+		// 		std::cout << (input[index] < 0.1 ? '.' : '#') << ' ';
 		// 	}
 		// 	std::cout << '\n';
 		// }
+		// for (size_t i = 0; i < width; ++i) {
+		// 	std::cout << "--";
+		// }
+		// std::cout << '\n';
+		// for (size_t y = 0; y < height; ++y) {
+		// 	for (size_t x = 0; x < width; ++x) {
+		// 		auto index = y * width + x;
+		// 		auto kernelInput = fftwData[bestScore.kernelId].kernelInput;;
+		// 		std::cout << (kernelInput[index]<= 0.0 ? '.' : '#')  << ' ';
+		// 	}
+		// 	std::cout << '\n';
+		// }
+		// for (size_t i = 0; i < width; ++i) {
+		// 	std::cout << "--";
+		// }
+		// std::cout << '\n';
+		// for (size_t y = 0; y < height; ++y) {
+		// 	for (size_t x = 0; x < width; ++x) {
+		// 		auto index = y * width + x;
+		// 		auto convolutionOutput = fftwData[bestScore.kernelId].convolutionOutput;;
+		// 		auto value = (int)std::round(convolutionOutput[index]);
 
-		// for (int32_t y = 0; y < glyphVector.height; ++y) {
-		// 	for (int32_t x = 0; x < glyphVector.width; ++x) {
-		// 		auto index = y * glyphVector.width + x;
-		// 		auto kernelInput = fftwData[0].kernelInput;;
-		// 		std::cout << kernelInput[index] << '\t';
+		// 		if (value >= 10) {
+		// 			std::cout << value << ' ';
+		// 		}
+		// 		else if (value >= 0) {
+		// 			std::cout << value << "  ";
+		// 		}
+		// 		else {
+		// 			std::cout << " . ";
+		// 		}
 		// 	}
 		// 	std::cout << '\n';
 		// }
@@ -374,23 +383,13 @@ std::vector<ConvolutionScore> Generator::Impl::getScoresForGlyph(
 		// add the score to the list
 		ret.push_back(bestScore);
 
-		// for (int32_t y = 0; y < glyphVector.height; ++y) {
-		// 	for (int32_t x = 0; x < glyphVector.width; ++x) {
-		// 		auto index = y * glyphVector.width + x;
-		// 		std::cout << (glyphVector.data[index] > 0.9 ? '#' : ' ') << ' ';
-		// 	}
-		// 	std::cout << '\n';
-		// }
-	}
-
-	for (auto& data : fftwData) {
-		delete[] data.input;
-		delete[] data.kernelInput;
-		delete[] data.output;
-		delete[] data.kernelOutput;
-		fftw_destroy_plan(data.inputPlan);
-		fftw_destroy_plan(data.kernelPlan);
-		fftw_destroy_plan(data.convolutionPlan);
+		for (size_t y = 0; y < glyphVector.height; ++y) {
+			for (size_t x = 0; x < glyphVector.width; ++x) {
+				auto index = y * glyphVector.width + x;
+				std::cout << (glyphVector.data[index] > 0.0 ? '#' : ' ') << ' ';
+			}
+			std::cout << '\n';
+		}
 	}
 
 	log::debug("Calculated scores for glyph");
@@ -449,7 +448,7 @@ std::vector<CreatedObject> Generator::Impl::create(
 
 	// create the objects
 	std::vector<CreatedObject> ret;
-	for (uint32_t i = 0; i < text.size(); ++i) {
+	for (usize_t i = 0; i < text.size(); ++i) {
 		auto c = text[i];
 		auto& scores = scoreMap[c];
 

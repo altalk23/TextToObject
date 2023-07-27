@@ -38,3 +38,17 @@ endif()
 add_subdirectory($ENV{GEODE_SDK} ${CMAKE_BINARY_DIR}/geode)
 
 setup_geode_mod(${PROJECT_NAME})
+
+add_executable(testing
+    src/ExecMain.cpp
+    src/MatrixOperations.cpp
+)
+
+target_link_libraries(testing
+    PkgConfig::FFTW
+    sfml-graphics
+)
+
+target_include_directories(testing PUBLIC
+    include
+)
