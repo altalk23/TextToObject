@@ -1,5 +1,5 @@
 #include <GeneratorNew.hpp>
-
+#include <iostream>
 #include <SFML/Graphics.hpp>
 
 using namespace tulip::text;
@@ -11,6 +11,7 @@ GeneratorNew::~GeneratorNew() = default;
 class GeneratorNew::Impl {
 public:
     std::vector<sf::Image> m_kernels;
+    std::vector<bool> m_offset;
 
     int m_width;
     int m_height;
@@ -22,7 +23,7 @@ public:
     sf::Image m_kernelImage;
 
     double bestScore = 0;
-    int bestIndex = 0;
+    int bestKernel = 0;
     int bestX = 0;
     int bestY = 0;
 
@@ -31,32 +32,49 @@ public:
     Matrix<double> m_output;
     Convolution m_convolution;
 
-    Impl() : m_input(300, 300), m_kernel(300, 300), m_output(300, 300), m_convolution(m_input, m_kernel, m_output) {}
+    Impl() : m_input(400, 400), m_kernel(400, 400), m_output(400, 400), m_convolution(m_input, m_kernel, m_output) {}
 
     void init(char32_t glyph);
-    void addKernel(sf::Sprite const& kernel);
+    void addKernel(sf::Sprite& kernel, double scale);
     void step(int steps);
 
-    sf::Sprite getGlyph() const;
-    sf::Sprite getEdge() const;
-    sf::Sprite getFilled() const;
-    sf::Sprite getRemoved() const;
-    sf::Sprite getKernel() const;
+    sf::Image const& getGlyph() const;
+    sf::Image const& getEdge() const;
+    sf::Image const& getFilled() const;
+    sf::Image const& getRemoved() const;
+    sf::Image const& getKernel() const;
 };
+
+sf::Image const& GeneratorNew::getKernel2(int index) const {
+    return m_impl->m_kernels[index];
+}
 
 void GeneratorNew::Impl::init(char32_t glyph) {
     sf::Font font;
     font.loadFromFile("/Users/student/Desktop/NotoSansJP-Regular.ttf");
 
-    auto glyph2 = font.getGlyph(glyph, 150, false);
+    auto glyph2 = font.getGlyph(glyph, 200, false);
 
-    sf::Image fontImage = font.getTexture(150).copyToImage();
+    sf::Image fontImage = font.getTexture(200).copyToImage();
 
     m_width = glyph2.textureRect.width;
     m_height = glyph2.textureRect.height;
 
-    m_glyphImage.create(m_width, m_height, sf::Color::White);
+    // std::cout << m_width << " " << m_height << std::endl;
+
+    m_glyphImage.create(m_width, m_height, sf::Color::Black);
     m_glyphImage.copy(fontImage, 0, 0, glyph2.textureRect);
+    for (int x = 0; x < m_width; ++x) {
+        for (int y = 0; y < m_height; ++y) {
+            auto color = m_glyphImage.getPixel(x, y);
+            if (color.a > 127) {
+                m_glyphImage.setPixel(x, y, sf::Color::White);
+            }
+            else {
+                m_glyphImage.setPixel(x, y, sf::Color::Black);
+            }
+        }
+    }
 
     m_edgeImage.create(m_width, m_height, sf::Color::Black);
 
@@ -64,23 +82,24 @@ void GeneratorNew::Impl::init(char32_t glyph) {
 
     m_kernelImage.create(m_width, m_height, sf::Color::Black);
 
-    m_removedImage.create(m_width, m_height, sf::Color::White);
-    m_removedImage.copy(fontImage, 0, 0, glyph2.textureRect);
+    m_removedImage.create(m_width, m_height, sf::Color::Black);
+    m_removedImage.copy(m_glyphImage, 0, 0, { 0, 0, m_width, m_height });
 }
 
-void GeneratorNew::Impl::addKernel(sf::Sprite const& kernel) {
-    int width = sprite.getGlobalBounds.width; 
-    int height = sprite.getGlobalBounds.height;
+void GeneratorNew::Impl::addKernel(sf::Sprite& kernel, double scale) {
+    int width = std::round(120 * scale); 
+    int height = std::round(120 * scale);
 
     sf::RenderTexture renderTexture;
     renderTexture.create( width, height );
     renderTexture.clear( sf::Color::Black );
-    renderTexture.draw( sprite );
+    renderTexture.draw( kernel );
     renderTexture.display();
 
     sf::Image image = renderTexture.getTexture().copyToImage();
 
     m_kernels.push_back(image);
+    m_offset.push_back(int(std::round(scale * 60)) % 2 == 1);
 }
 
 void GeneratorNew::Impl::step(int steps) {
@@ -91,18 +110,23 @@ void GeneratorNew::Impl::step(int steps) {
         for (int x = 0; x < m_width; ++x) {
             for (int y = 0; y < m_height; ++y) {
                 auto color = m_removedImage.getPixel(x, y);
-                if (color.r > 0) {
+                if (color.r > 127) {
                     m_input(x, y) = 1;
                 }
             }
         }
 
         m_kernel.zero();
-        m_kernel(1, 0) = -1;
-        m_kernel(0, 1) = -1;
-        m_kernel(1, 1) = 4;
-        m_kernel(2, 1) = -1;
-        m_kernel(1, 2) = -1;
+        for (int x = 1; x <= 3; ++x) {
+            for (int y = 1; y <= 3; ++y) {
+                m_kernel(x, y) = -1;
+            }
+        }
+        m_kernel(2, 0) = -1;
+        m_kernel(0, 2) = -1;
+        m_kernel(2, 2) = 12;
+        m_kernel(4, 2) = -1;
+        m_kernel(2, 4) = -1;
 
         m_convolution.execute();
 
@@ -121,18 +145,25 @@ void GeneratorNew::Impl::step(int steps) {
             auto kernelWidth = kernel.getSize().x;
             auto kernelHeight = kernel.getSize().y;
             
-            m_input.fill(-10);
+            m_input.fill(-4);
             for (int x = 0; x < m_width; ++x) {
                 for (int y = 0; y < m_height; ++y) {
                     auto colorE = m_edgeImage.getPixel(x, y);
-                    auto colorR = m_removedImage.getPixel(x, y);
+                    auto colorG = m_glyphImage.getPixel(x, y);
+                    auto colorF = m_filledImage.getPixel(x, y);
 
                     if (colorE.r > 0) {
                         m_input(x, y) = 1;
                     }
-                    else if (colorR.r > 0) {
-                        m_input(x, y) = 0;
+                    else if (colorG.r > 0) {
+                        if (colorF.r > 0) {
+                            m_input(x, y) = 0; // -0.02;
+                        }
+                        else {
+                            m_input(x, y) = 0;
+                        }
                     }
+
                 }
             }
 
@@ -140,7 +171,7 @@ void GeneratorNew::Impl::step(int steps) {
             for (int x = 0; x < kernelWidth; ++x) {
                 for (int y = 0; y < kernelHeight; ++y) {
                     auto color = kernel.getPixel(x, y);
-                    if (color.r > 0) {
+                    if (color.r > 127) {
                         m_kernel(x, y) = 1;
                     }
                 }
@@ -149,19 +180,21 @@ void GeneratorNew::Impl::step(int steps) {
             m_convolution.execute();
 
             double score = 0;
-            for (int x = 0; x < m_width - kernelWidth + 1; ++x) {
-                for (int y = 0; y < m_height - kernelHeight + 1; ++y) {
-                    auto current = m_output(x + kernelWidth - 1, y + kernelHeight - 1);
+            for (int x = 0; x < m_width + kernelWidth; ++x) {
+                for (int y = 0; y < m_height + kernelHeight; ++y) {
+                    auto current = m_output(x, y);
 
                     if (current + 0.1 > bestScore) {
                         bestScore = current;
                         bestKernel = i;
-                        bestX = x;
-                        bestY = y;
+                        bestX = x - kernelWidth + 1 + m_offset[i];
+                        bestY = y - kernelHeight + 1 - m_offset[i];
                     }
                 }
             }
         }
+
+        std::cout << bestKernel << " " << bestScore << " " << bestX << " " << bestY << std::endl;
 
         auto& kernel = m_kernels[bestKernel];
         auto kernelWidth = kernel.getSize().x;
@@ -176,7 +209,10 @@ void GeneratorNew::Impl::step(int steps) {
         for (int x = 0; x < kernelWidth; ++x) {
             for (int y = 0; y < kernelHeight; ++y) {
                 auto color = kernel.getPixel(x, y);
-                if (color.r > 0) {
+                if (bestX + x < 0 || bestX + x >= m_width || bestY + y < 0 || bestY + y >= m_height) {
+                    continue;
+                }
+                if (color.r > 127) {
                     m_kernelImage.setPixel(bestX + x, bestY + y, sf::Color::White);
                     m_removedImage.setPixel(bestX + x, bestY + y, sf::Color::Black);
                     m_filledImage.setPixel(bestX + x, bestY + y, sf::Color::White);
@@ -187,85 +223,50 @@ void GeneratorNew::Impl::step(int steps) {
     }
 }
 
-sf::Sprite GeneratorNew::Impl::getGlyph() const {
-    sf::Texture texture;
-    texture.loadFromImage(m_glyphImage);
-
-    sf::Sprite sprite;
-    sprite.setTexture(texture);
-    sprite.setPosition(100, 100);
-    sprite.setScale(4, 4);
-    return sprite;
+sf::Image const& GeneratorNew::Impl::getGlyph() const {
+    return m_glyphImage;
 }
-sf::Sprite GeneratorNew::Impl::getEdge() const {
-    sf::Texture texture;
-    texture.loadFromImage(m_edgeImage);
-
-    sf::Sprite sprite;
-    sprite.setTexture(texture);
-    sprite.setPosition(100, 100);
-    sprite.setScale(4, 4);
-    return sprite;
+sf::Image const& GeneratorNew::Impl::getEdge() const {
+    return m_edgeImage;
 }
-sf::Sprite GeneratorNew::Impl::getFilled() const {
-    sf::Texture texture;
-    texture.loadFromImage(m_filledImage);
-
-    sf::Sprite sprite;
-    sprite.setTexture(texture);
-    sprite.setPosition(100, 100);
-    sprite.setScale(4, 4);
-    return sprite;
+sf::Image const& GeneratorNew::Impl::getFilled() const {
+    return m_filledImage;
 }
-sf::Sprite GeneratorNew::Impl::getRemoved() const {
-    sf::Texture texture;
-    texture.loadFromImage(m_removedImage);
-
-    sf::Sprite sprite;
-    sprite.setTexture(texture);
-    sprite.setPosition(100, 100);
-    sprite.setScale(4, 4);
-    return sprite;
+sf::Image const& GeneratorNew::Impl::getRemoved() const {
+    return m_removedImage;
 }
-sf::Sprite GeneratorNew::Impl::getKernel() const {
-    sf::Texture texture;
-    texture.loadFromImage(m_kernelImage);
-
-    sf::Sprite sprite;
-    sprite.setTexture(texture);
-    sprite.setPosition(100, 100);
-    sprite.setScale(4, 4);
-    return sprite;
+sf::Image const& GeneratorNew::Impl::getKernel() const {
+    return m_kernelImage;
 }
 
 void GeneratorNew::init(char32_t glyph) {
     m_impl->init(glyph);
 }
 
-void GeneratorNew::addKernel(sf::Sprite const& kernel) {
-    m_impl->addKernel(kernel);
+void GeneratorNew::addKernel(sf::Sprite& kernel, double scale) {
+    m_impl->addKernel(kernel, scale);
 }
 
 void GeneratorNew::step(int steps) {
     m_impl->step(steps);
 }
 
-sf::Sprite GeneratorNew::getGlyph() const {
+sf::Image const& GeneratorNew::getGlyph() const {
     return m_impl->getGlyph();
 }
 
-sf::Sprite GeneratorNew::getEdge() const {
+sf::Image const& GeneratorNew::getEdge() const {
     return m_impl->getEdge();
 }
 
-sf::Sprite GeneratorNew::getFilled() const {
+sf::Image const& GeneratorNew::getFilled() const {
     return m_impl->getFilled();
 }
 
-sf::Sprite GeneratorNew::getRemoved() const {
+sf::Image const& GeneratorNew::getRemoved() const {
     return m_impl->getRemoved();
 }
 
-sf::Sprite GeneratorNew::getKernel() const {
+sf::Image const& GeneratorNew::getKernel() const {
     return m_impl->getKernel();
 }

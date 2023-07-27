@@ -1,6 +1,5 @@
 #pragma once
 
-#include "GeneratorConfig.hpp"
 #include "MatrixOperations.hpp"
 
 #include <SFML/Graphics.hpp>
@@ -14,17 +13,18 @@ namespace tulip::text {
 		std::unique_ptr<Impl> m_impl;
 
 	public:
-		Generator();
-		~Generator();
+		GeneratorNew();
+		~GeneratorNew();
 
 		void init(char32_t glyph);
-        void addKernel(sf::Sprite const& kernel);
+        void addKernel(sf::Sprite& kernel, double scale);
         void step(int steps = 1);
 
-        sf::Sprite getGlyph() const;
-        sf::Sprite getEdge() const;
-        sf::Sprite getFilled() const;
-        sf::Sprite getRemoved() const;
-        sf::Sprite getKernel() const;
+        sf::Image const& getGlyph() const;
+        sf::Image const& getEdge() const;
+        sf::Image const& getFilled() const;
+        sf::Image const& getRemoved() const;
+        sf::Image const& getKernel() const;
+        sf::Image const& getKernel2(int index) const;
 	};
 }

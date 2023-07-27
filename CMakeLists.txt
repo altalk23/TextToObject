@@ -42,11 +42,13 @@ setup_geode_mod(${PROJECT_NAME})
 add_executable(testing
     src/ExecMain.cpp
     src/MatrixOperations.cpp
+    src/GeneratorNew.cpp
 )
 
 target_link_libraries(testing
     PkgConfig::FFTW
     sfml-graphics
+    ghc_filesystem
 )
 
 target_include_directories(testing PUBLIC

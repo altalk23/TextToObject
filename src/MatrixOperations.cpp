@@ -7,7 +7,6 @@ using namespace tulip::text;
 template <>
 Matrix<double>::Matrix(size_t width, size_t height) : width(width), height(height) {
     data = fftw_alloc_real(width * height);
-    this->zero();
 }
 
 template <>
@@ -28,7 +27,6 @@ void Matrix<double>::fill(double value) {
 template <>
 Matrix<fftw_complex>::Matrix(size_t width, size_t height) : width(width), height(height) {
     data = fftw_alloc_complex(width * height);
-    this->zero();
 }
 
 template <>
